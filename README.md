@@ -1,7 +1,7 @@
 # SKB.Py.FastAPIVueFramework
 A baseline framework which uses fastapi as backend and vue as frontend.
 
-For the complete backend setup and endpoint guide, see [Backend Usage](docs/USAGE.md).
+For the complete backend setup and endpoint guide, see [Backend Usage](docs/usage/backend/USAGE.md).
 
 ## Backend
 
