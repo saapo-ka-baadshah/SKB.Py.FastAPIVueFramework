@@ -1,1 +1,15 @@
 # Risks and Technical Debts
+
+| Risk / debt | Impact | Mitigation or follow-up |
+|---|---|---|
+| Tempo, Kafka, Collector, and Grafana settings are not yet migrated together. | Traces or broker-dependent services may fail at startup or be unreachable. | Update service definitions, endpoints, readiness, provisioning, and setup configuration as one tested deployment change. |
+| Kafka distribution, topology, listeners, security, and persistence are unspecified. | Compose may start a broker that clients cannot reach, or may imply unsuitable local/production guarantees. | Select and document the development mode; treat production hardening separately. |
+| No current application producer/consumer contract is specified. | A broker replacement could be mistaken for an application messaging feature. | Keep broker-service delivery separate from any future producer/consumer requirement. |
+| Web Compose currently defines only `webapi`; frontend build/run instructions are absent. | The requested full web startup is not currently achievable through that file. | Add valid builds and ports for both apps and document one working invocation. |
+| Prometheus Compose command points to `/etc/prometheus/prometheus.yml`, while the mounted configuration target is `/etc/prometheus/prometheus.yaml`. | Prometheus may fail to load its configuration and become unhealthy, affecting Collector metrics scraping and dependent startup. | Align the command path and mount target during deployment implementation, then validate the service health. |
+| Browser and container network addresses differ. | Frontend API calls can fail if configured with a Compose-only DNS name. | Define a browser-resolvable API URL or same-origin proxy and test it from the browser. |
+| Existing `docker-compose.web.yml` depends on RabbitMQ, Keycloak, and Grafana while not defining them. | Standalone startup can fail due to unresolved dependency references. | Decide and document whether the web file is standalone or layered with infrastructure Compose; ensure all dependencies exist in the selected invocation. |
+| `deploy/2_deploy.sh` references `docker-compose.cleanwebapi.yml`, absent from the inspected deploy directory. | The script may not represent a valid current deployment entry point. | Reconcile scripts and supported Compose file names during implementation. |
+| Root `deploy/docker-compose.yml` uses floating `latest` images for several infrastructure services. | Reproducibility and upgrade behavior can change over time. | Consider pinning tested image versions; no version pinning requirement is currently specified. |
+| The setup script currently generates a RabbitMQ password. | A Kafka replacement can leave an obsolete secret variable or suggest unsupported broker authentication. | Align generated environment variables with the chosen Kafka configuration and document whether authentication is enabled. |
+| Target architecture documentation could be mistaken for deployed behavior. | Operators may rely on unimplemented endpoints or services. | Mark target-state content and verify it against actual Compose/configuration changes before implementation is declared complete. |

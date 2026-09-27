@@ -2,6 +2,7 @@
 
 Current plans:
 
+- [PLAN-006: Deployment Modernization](PLAN-006-deployment-modernization.md) is the deployment and infrastructure implementation plan.
 - [PLAN-004: Vue Frontend](PLAN-004-vue-frontend.md) is the frontend implementation plan.
 - [PLAN-005: Frontend JSDoc Guidance](PLAN-005-frontend-jsdoc-guidance.md) covers the frontend documentation update for FRONTEND-REQ-003.
 

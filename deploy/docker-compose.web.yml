@@ -1,0 +1,33 @@
+networks:
+    observer-net:
+        driver: bridge
+
+secrets:
+    ghUser_definition:
+        environment: GITHUB_USERNAME
+    ghPass_definition:
+        environment: GITHUB_PACKAGES_FEED_PAT
+
+services:
+    webapi:
+        build:
+            context: ${PROJECT_ROOT}
+            dockerfile: ${PROJECT_ROOT}/Dockerfile
+            secrets:
+                - source: ghUser_definition
+                  target: ghUser
+
+                - source: ghPass_definition
+                  target: ghPass
+        depends_on:
+            rabbitmq:
+                condition: service_started
+            keycloak:
+                condition: service_started
+            grafana:
+                condition: service_started
+        ports:
+            -   "8080:8080"
+        networks:
+            -   observer-net
+                # Add your static IP Requirements here

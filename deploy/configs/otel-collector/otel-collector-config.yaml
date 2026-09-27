@@ -1,0 +1,75 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - "http://*"
+            - "https://*"
+
+processors:
+  batch:
+    send_batch_size: 512
+    timeout: 5s
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 1000
+    spike_limit_mib: 200
+  transform:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["log.level"], "TRACE") where severity_text == "Trace"
+          - set(attributes["log.level"], "INFO") where severity_text == "Information"
+          - set(attributes["log.level"], "DEBUG") where severity_text == "Debug"
+          - set(attributes["log.level"], "ERROR") where severity_text == "Error"
+          - set(attributes["log.level"], "WARN") where severity_text == "Warning"
+          - set(attributes["log.level"], "FATAL") where severity_text == "Critical"
+          - set(resource.attributes["log.level"], attributes["log.level"])
+  groupbyattrs:
+    keys:
+      - log.level
+
+exporters:
+  debug:
+    verbosity: detailed
+
+  # Loki Exporter explicitly
+  otlphttp:
+    endpoint: http://skb-loki:3100/otlp
+    encoding: json
+
+  # Prometheus exporter for metrics scraping
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+  otlphttp/to_jaeger:
+    endpoint: http://skb-jaeger:4318
+    tls:
+      insecure: true # Fine for local dev; use proper certs for production
+
+service:
+  extensions: [health_check, zpages]
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [transform, groupbyattrs, batch]
+      exporters: [debug, otlphttp]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, otlphttp/to_jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, prometheus]
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+  zpages:
+    endpoint: "0.0.0.0:55679"

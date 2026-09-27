@@ -1,0 +1,210 @@
+networks:
+  default:
+  observer-net:
+    driver: bridge
+
+######################################### Volumes
+volumes:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  keycloak_data:
+#################################################
+
+############################## Logging Extensions
+x-logging-ext: &logging-ext
+  driver: fluentd
+  options:
+    fluentd-address: "localhost:24224"
+    tag: logger
+#################################################
+
+######################################## Services
+# Depending on the sequence, Arranging the Services in order, so that it looks nice on the console
+# SEQUENCE 1:
+#   1. Loki
+#   2. Prometheus
+#   3. Jaeger
+#
+# SEQUENCE 2:
+# This sequence is dependent on the healthy status of SEQUENCE 1
+#   1. otel-collector
+#   2. grafana
+#
+# SEQUENCE 3:
+#   1. fluent-bit
+# Finally, fluent-bit which depends on otel-collector for log sourcing and Loki for log sinking
+#
+# SEQUENCE 3:
+#   1. rabbitmq
+#   2. keycloak
+#
+# DECENTRALIZED SEQUENCES:
+#   1. Ollama (runs either on cloud or over an on-premise hosted machine)
+#           Ollama needs to be capable of performing powerful operations, hence needs a resource intensive machine
+
+services:
+  loki:
+    image: docker.io/grafana/loki:latest
+    container_name: skb-loki
+    hostname: skb-loki
+    command:
+      - -config.file=/conf/config.yaml
+      - -log.level=info
+    volumes:
+      - ./configs/loki/loki-config.yaml:/conf/config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - '3100:3100'
+    networks:
+      - observer-net
+    restart: unless-stopped
+    healthcheck:
+      test: "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"
+      start_interval: 5s
+      start_period: 30s
+
+  prometheus:
+    image: docker.io/prom/prometheus:latest
+    container_name: skb-prometheus
+    hostname: skb-prometheus
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./configs/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus_data:/prometheus # Persist Prometheus data
+    ports:
+      - "9090:9090" # Prometheus UI
+    networks:
+      - observer-net
+    healthcheck:
+      test: "wget --spider -q --tries=1 -O- http://localhost:9090 || exit 1"
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+
+  jaeger:
+    container_name: skb-jaeger
+    hostname: skb-jaeger
+    image: docker.io/jaegertracing/jaeger:latest
+    ports:
+      - "16686:16686"     # Jaeger UI / Query API
+      - "14268:14268"     # Jaeger collector HTTP
+      - "14250:14250"     # Jaeger collector gRPC
+    networks:
+      - observer-net
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    healthcheck:
+      test: "wget --no-verbose --tries=1 --spider http://localhost:16686/ || exit 1"
+      start_interval: 5s
+      start_period: 30s
+
+  otel-collector:
+    image: docker.io/otel/opentelemetry-collector-contrib:latest
+    container_name: skb-otel-collector
+    hostname: skb-otel-collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./configs/otel-collector/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"
+      - "8889:8889"
+      - "13133:13133"
+      - "55679:55679"
+    networks:
+      - observer-net
+#    healthcheck:
+#      test: "wget --spider -q --tries=1 -O- http://localhost:13133 | grep -o '\"status\": *\"[^\"]*\"' | sed 's/\"status\": *\"//;s/\"//' || exit 1"
+#      interval: 1m30s
+#      timeout: 30s
+#      retries: 5
+#      start_period: 30s
+    depends_on:
+      loki:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+
+  grafana:
+    image: docker.io/grafana/grafana:latest
+    hostname: skb-grafana
+    container_name: skb-grafana
+    environment:
+        - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - ./configs/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./configs/grafana/provisioning/:/etc/grafana/provisioning/:ro
+      - ./configs/grafana/provisioning/dashboards_json:/etc/grafana/provisioning/dashboards_json:ro
+      - grafana_data:/var/lib/grafana # Persist Grafana data
+    ports:
+      - "3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+      fluent-bit:
+        condition: service_started
+      rabbitmq:
+          condition: service_started
+    networks:
+      - observer-net
+    logging: *logging-ext
+
+  fluent-bit:
+    image: docker.io/fluent/fluent-bit:latest
+    container_name: skb-fluent-bit
+    hostname: skb-fluent-bit
+    volumes:
+      - ./configs/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./configs/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+      - "2020:2020"
+    depends_on:
+      - loki
+      - otel-collector
+    networks:
+      - observer-net
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: skb-rabbitmq
+    container_name: rabbitmq
+    restart: unless-stopped
+    command: >
+        sh -c "rabbitmq-server"
+    depends_on:
+        fluent-bit:
+            condition: service_started
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_ADMIN_PASSWORD}
+    logging: *logging-ext
+    networks:
+        - observer-net
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    hostname: skb-keycloak
+    container_name: keycloak
+    command: start-dev
+    environment:
+        - KC_HEALTH_ENABLED=true
+        - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+        - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
+    volumes:
+        - keycloak_data:/opt/keycloak/data
+    ports:
+        - "18080:8080"
