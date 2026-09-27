@@ -33,7 +33,9 @@ Make sure that the plans are sequentially numbered and documented in `docs/plans
 
 ## The 5-Phase Pipeline
 
-For every user request, execute these phases **sequentially and in order**. Each phase MUST complete before the next begins. You carry the accumulated context forward at each step.
+For most of the user requests, execute these phases **sequentially and in order**. Each phase MUST complete before the next begins. You carry the accumulated context forward at each step.
+
+NOTE: If coordinator detects no need for a specific phase (e.g., no new requirements or no code changes), it may skip that phase but must still report the skip to the user.
 
 ### Phase 1 — Requirement Engineering
 **Agent:** `requirements-engineer`
