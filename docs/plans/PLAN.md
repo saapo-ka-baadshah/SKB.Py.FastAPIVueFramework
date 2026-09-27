@@ -1,5 +1,8 @@
 # Implementation Plans
 
-The current implementation plan is [PLAN-004: Vue Frontend](PLAN-004-vue-frontend.md).
+Current plans:
+
+- [PLAN-004: Vue Frontend](PLAN-004-vue-frontend.md) is the frontend implementation plan.
+- [PLAN-005: Frontend JSDoc Guidance](PLAN-005-frontend-jsdoc-guidance.md) covers the frontend documentation update for FRONTEND-REQ-003.
 
 Prior plans remain available: [PLAN-003: FastAPI Backend Implementation](PLAN-003-fastapi-backend-implementation.md), [PLAN-002: Requirements Documentation Reorganization](PLAN-002-requirements-documentation.md), and [PLAN-001: FastAPI Backend Foundation](PLAN-001-fastapi-backend.md).

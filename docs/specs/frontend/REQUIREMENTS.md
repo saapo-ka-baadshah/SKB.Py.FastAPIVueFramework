@@ -6,7 +6,7 @@ Define requirements for the initial Vue frontend deliverable. Approval of these 
 
 ## Source
 
-User request: "Create a vue frontend within the specified frontend folder. The vue frontend should currently only show a simple frontend page, regarding the current setup of the application. i.e. backend tech stack and frontend tech stack"
+User requests: "Create a vue frontend within the specified frontend folder. The vue frontend should currently only show a simple frontend page, regarding the current setup of the application. i.e. backend tech stack and frontend tech stack" and "Add frontend documentation with correct docstring usage"
 
 ## Unit Scope
 
@@ -37,6 +37,19 @@ The initial frontend page shall provide a simple overview of the application's c
 - Both stack labels and values are readable in the rendered page.
 - The page is informational; no additional frontend workflows are required by this request.
 
+### FRONTEND-REQ-003: Frontend JavaScript and Vue documentation guidance
+
+**Type:** Non-functional
+**Status:** Approved
+
+Frontend developer documentation shall define correct JSDoc usage for JavaScript declarations and Vue single-file components.
+
+**Acceptance criteria:**
+- The frontend developer documentation explains when JSDoc is useful and places `/** ... */` comments immediately before the declaration they document.
+- The guidance explains how to document applicable function parameters and return values with `@param` and `@returns`, and cautions against inaccurate or redundant comments.
+- The guidance states that component-level JSDoc belongs on an explicit Vue component declaration in a `<script>` block, not in a template-only component that has no explicit declaration to annotate.
+- No function-level comments are required or added for files that contain no functions.
+
 ## Assumptions
 
 - “Current setup” refers to the repository's FastAPI backend and the requested Vue frontend; specific framework versions are not specified.
@@ -53,3 +66,4 @@ None block this requirements definition. Framework versions, build tooling, and 
 |---|---|---|
 | FRONTEND-REQ-001 | User request: “Create a vue frontend within the specified frontend folder.” | Vue application entry point and frontend project configuration |
 | FRONTEND-REQ-002 | User request: “The vue frontend should currently only show a simple frontend page, regarding the current setup of the application. i.e. backend tech stack and frontend tech stack” | Initial frontend page |
+| FRONTEND-REQ-003 | User request: “Add frontend documentation with correct docstring usage” | Frontend developer documentation in `frontend/README.md` |
