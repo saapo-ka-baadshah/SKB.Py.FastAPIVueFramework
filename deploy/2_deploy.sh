@@ -1,31 +1,28 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ########### FORMATTERS
 LINE_SEPARATOR="--------------------------------------------------------------------"
 check_dotenv_exists() {
-  if [ -f ".env" ]; then
-    return 0 # .env exists and is a regular file
-  else
-    return 1 # .env does not exist or is not a regular file
-  fi
+  [[ -f "$SCRIPT_DIR/.env" ]]
 }
 
 deploy(){
-	docker compose \
-		-f docker-compose.yml \
-		-f docker-compose.cleanwebapi.yml \
-		up -d
+	cd "$SCRIPT_DIR"
+	docker compose -f docker-compose.yml -f docker-compose.web.yml up --build -d
 }
 
 ########### MAIN SCRIPT
 
 if check_dotenv_exists; then
 	echo $LINE_SEPARATOR
-	echo "Environment file found: $PWD/.env"
+	echo "Environment file found: $SCRIPT_DIR/.env"
 	echo $LINE_SEPARATOR
 else
 	echo $LINE_SEPARATOR
-	echo "Environment file not found at: $PWD/.env"
+	echo "Environment file not found at: $SCRIPT_DIR/.env"
 	echo "Please generate the environment variables with script: 0_create_env.sh"
 	echo "run: ./0_create_env.sh"
 	echo "[FATAL] Exiting..."

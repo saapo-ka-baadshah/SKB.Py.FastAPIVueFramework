@@ -47,10 +47,10 @@ exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
 
-  otlphttp/to_jaeger:
-    endpoint: http://skb-jaeger:4318
+  otlp/tempo:
+    endpoint: tempo:4317
     tls:
-      insecure: true # Fine for local dev; use proper certs for production
+      insecure: true
 
 service:
   extensions: [health_check, zpages]
@@ -62,7 +62,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug, otlphttp/to_jaeger]
+      exporters: [debug, otlp/tempo]
     metrics:
       receivers: [otlp]
       processors: [batch]

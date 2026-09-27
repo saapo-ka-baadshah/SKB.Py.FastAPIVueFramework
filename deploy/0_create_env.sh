@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
 
-ENV_FILE=".env"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/.env"
+umask 077
 GITHUB_TOKEN=""
 GITHUB_USERNAME=""
+KAFKA_CLUSTER_ID=""
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-}"
+ENABLE_GITHUB_CREDENTIALS=false
+
+if [[ "${1:-}" == "--github" ]]; then
+  ENABLE_GITHUB_CREDENTIALS=true
+elif [[ $# -gt 0 ]]; then
+  echo "Usage: $0 [--github]"
+  exit 2
+fi
 
 ########### FORMATTERS
 LINE_SEPERATOR="--------------------------------------------------------------------"
@@ -33,17 +45,75 @@ _update_or_append_env_var() {
 
 # Generate randomly generated passwords
 generate_random_passwords(){
-	# Generate password for GRAFANA ADMIN
-	_update_or_append_env_var "GRAFANA_ADMIN_PASSWORD" "$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')" "$ENV_FILE"
-	# Generate password for RABBIT ADMIN
-	_update_or_append_env_var "RABBIT_ADMIN_PASSWORD" "$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')" "$ENV_FILE"
-	# Generate password for KEYCLOAK ADMIN
-	_update_or_append_env_var "KEYCLOAK_ADMIN_PASSWORD" "$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')" "$ENV_FILE"
+  if ! grep -q '^GRAFANA_ADMIN_PASSWORD=' "$ENV_FILE"; then
+    _update_or_append_env_var "GRAFANA_ADMIN_PASSWORD" "$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')" "$ENV_FILE"
+  fi
+  if ! grep -q '^KEYCLOAK_ADMIN_PASSWORD=' "$ENV_FILE"; then
+    _update_or_append_env_var "KEYCLOAK_ADMIN_PASSWORD" "$(head -c 16 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')" "$ENV_FILE"
+  fi
 }
 
-# Generate project root and fix it
-fix_project_root(){
-	_update_or_append_env_var "PROJECT_ROOT" "$(git rev-parse --show-toplevel)" "$ENV_FILE"
+read_existing_kafka_cluster_id() {
+  local project_name volume_name metadata cluster_id
+
+  if ! command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "Error: start Docker so existing Kafka data can be checked before generating a cluster ID." >&2
+    return 1
+  fi
+
+  project_name="${COMPOSE_PROJECT_NAME:-$(basename "$SCRIPT_DIR")}"
+  volume_name="$(docker volume ls \
+    --filter "label=com.docker.compose.project=$project_name" \
+    --filter "label=com.docker.compose.volume=kafka_data" \
+    --format '{{.Name}}' | head -n 1)"
+  if [ -z "$volume_name" ]; then
+    return 0
+  fi
+
+  if ! docker image inspect apache/kafka:3.9.1 >/dev/null 2>&1; then
+    echo "Error: Kafka volume '$volume_name' exists, but apache/kafka:3.9.1 is unavailable to read its cluster ID." >&2
+    return 1
+  fi
+
+  metadata="$(docker run --rm --volume "$volume_name:/kafka-data:ro" \
+    --entrypoint /bin/cat apache/kafka:3.9.1 /kafka-data/meta.properties 2>/dev/null)" || return 0
+  cluster_id="$(printf '%s\n' "$metadata" | sed -n 's/^cluster.id=//p' | head -n 1)"
+  if [[ "$cluster_id" =~ ^[A-Za-z0-9_-]{22}$ ]]; then
+    printf '%s' "$cluster_id"
+  fi
+}
+
+generate_kafka_cluster_id() {
+  if [ -n "$KAFKA_CLUSTER_ID" ]; then
+    echo "Existing Kafka cluster ID found; preserving it."
+    return 0
+  fi
+
+  local existing_cluster_id
+  existing_cluster_id="$(read_existing_kafka_cluster_id)" || return 1
+  if [ -n "$existing_cluster_id" ]; then
+    KAFKA_CLUSTER_ID="$existing_cluster_id"
+    _update_or_append_env_var "KAFKA_CLUSTER_ID" "$KAFKA_CLUSTER_ID" "$ENV_FILE"
+    echo "Recovered and saved Kafka cluster ID from the existing data volume."
+    return 0
+  fi
+
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "Error: openssl is required to generate a Kafka cluster ID." >&2
+    return 1
+  fi
+
+  KAFKA_CLUSTER_ID="$(openssl rand -base64 16 | tr '+/' '-_' | tr -d '=\n')"
+  if [[ ! "$KAFKA_CLUSTER_ID" =~ ^[A-Za-z0-9_-]{22}$ ]]; then
+    echo "Error: failed to generate a valid Kafka cluster ID." >&2
+    return 1
+  fi
+
+  _update_or_append_env_var "KAFKA_CLUSTER_ID" "$KAFKA_CLUSTER_ID" "$ENV_FILE"
+  echo "Generated and saved Kafka cluster ID."
 }
 
 # Function to load environment variables from .env file
@@ -63,8 +133,14 @@ load_env() {
 
       if [ "$key" = "GITHUB_TOKEN" ]; then
         GITHUB_TOKEN="$value"
+      elif [ "$key" = "GITHUB_PACKAGES_FEED_PAT" ]; then
+        GITHUB_TOKEN="$value"
       elif [ "$key" = "GITHUB_USERNAME" ]; then
         GITHUB_USERNAME="$value"
+      elif [ "$key" = "KAFKA_CLUSTER_ID" ]; then
+        KAFKA_CLUSTER_ID="$value"
+      elif [ "$key" = "COMPOSE_PROJECT_NAME" ]; then
+        COMPOSE_PROJECT_NAME="$value"
       fi
     done < "$ENV_FILE"
 
@@ -79,7 +155,7 @@ load_env() {
       echo "GITHUB_USERNAME not found in $ENV_FILE."
     fi
   else
-    echo "$ENV_FILE not found. Will prompt for credentials."
+    echo "$ENV_FILE not found. GitHub package authentication is optional; use --github to configure it."
   fi
 }
 
@@ -194,58 +270,32 @@ test_github_token() {
 # --- Main script execution ---
 
 load_env
+generate_kafka_cluster_id || exit 1
 
-NEEDS_SAVE=false
+if [ "$ENABLE_GITHUB_CREDENTIALS" = true ]; then
+  NEEDS_SAVE=false
 
-# Fix the project root
-echo $LINE_SEPERATOR
-echo "Fixing project root"
-fix_project_root
-echo $LINE_SEPERATOR
-echo "DONE"
-echo $LINE_SEPERATOR
-
-# Prompt for Username if not loaded
-if [ -z "$GITHUB_USERNAME" ]; then
-  prompt_for_username
-  if [ -n "$GITHUB_USERNAME" ]; then
+  if [ -z "$GITHUB_USERNAME" ]; then
+    prompt_for_username
     NEEDS_SAVE=true
-  # If username prompt is skipped or results in empty, we might still proceed if token is good.
-  # else
-  #   echo "No GitHub username was provided. Proceeding without it for saving."
   fi
-fi
 
-# Prompt for PAT if not loaded
-if [ -z "$GITHUB_TOKEN" ]; then
-  prompt_for_pat
-  if [ -n "$GITHUB_TOKEN" ]; then
+  if [ -z "$GITHUB_TOKEN" ]; then
+    prompt_for_pat
     NEEDS_SAVE=true
-  else
-    echo "No GitHub token was provided. Exiting."
+  fi
+
+  if [ "$NEEDS_SAVE" = true ]; then
+    save_credentials_to_env
+  fi
+
+  if ! test_github_token; then
+    echo "GitHub authentication failed. Check the token and try again."
     exit 1
   fi
-fi
-
-# Save to .env if any new information was prompted for
-if [ "$NEEDS_SAVE" = true ]; then
-  save_credentials_to_env
-fi
-
-echo ""
-test_github_token
-TEST_RESULT=$?
-
-if [ $TEST_RESULT -eq 0 ]; then
-  echo "You are now authenticated with GitHub using the credentials in $ENV_FILE."
-  echo "You can now use these in other scripts or applications by sourcing $ENV_FILE or reading it."
-  echo "Example (in bash/zsh): source $ENV_FILE && echo \$GITHUB_TOKEN"
 else
-  echo "Authentication failed. Please check the token (and username if relevant) and try again."
-  echo "If credentials were just saved to $ENV_FILE, you might need to correct them manually or re-run the script."
-  exit 1
+  echo "Skipping optional GitHub package authentication. Use --github to configure it."
 fi
-
 
 echo $LINE_SEPERATOR
 echo "Generating Random Passwords"

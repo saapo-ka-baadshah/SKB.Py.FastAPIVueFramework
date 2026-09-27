@@ -2,16 +2,15 @@
 
 ## Infrastructure Level 1
 
-The local development system is deployed as Docker Compose services on an application network and an observer network. The requested target adds the web applications to `docker-compose.web.yml` and replaces Jaeger with Tempo and RabbitMQ with Kafka.
+The local development system is defined by `docker-compose.yml` plus the `docker-compose.web.yml` overlay, run from `deploy/`. Services share the observer network; app ports, Tempo query, and the Kafka host listener bind to loopback. Existing Loki, Prometheus, Collector, Grafana, Fluent Bit, and Keycloak ports retain Compose's default host binding, so keep this stack on a trusted development machine. Docker image builds and live deployment have not been verified because the Docker Engine is unavailable.
 
 ```mermaid
 flowchart TB
-	Browser[Developer browser] -->|Published HTTP port| Frontend[Vue container - target]
-	Browser -->|Published HTTP port| Backend[FastAPI container - target]
-	Frontend -->|Configured API URL / proxy| Backend
-	Backend -.->|Kafka client, if applicable| Kafka[Kafka - target]
-	Backend --> OTel[OpenTelemetry Collector]
-	OTel --> Tempo[Tempo - target]
+	Browser[Developer browser] -->|127.0.0.1:8081| Frontend[Vue / Nginx]
+	Browser -->|127.0.0.1:8080| Backend[FastAPI]
+	Backend -.->|No client configured| Kafka[Kafka KRaft]
+	TelemetrySource[OTLP-capable client] --> OTel[OpenTelemetry Collector]
+	OTel -->|OTLP gRPC :4317| Tempo[Tempo]
 	OTel --> Prometheus[Prometheus]
 	Docker[Docker Fluent Forward] --> FluentBit[Fluent Bit]
 	FluentBit --> Loki[Loki]
@@ -21,7 +20,7 @@ flowchart TB
 	Keycloak[Keycloak]
 ```
 
-The diagram shows the target deployment. Existing files already define most infrastructure services, but currently use Jaeger and RabbitMQ; the web Compose file currently defines only the API service. Dashed edges represent a conditional or unspecified application integration.
+The diagram shows the configured development deployment. Dashed edges are conditional application integrations, not current source-code behavior.
 
 **Motivation:** Compose provides a repeatable local environment with explicit service names, networks, configuration mounts, and persistent data volumes.
 
@@ -29,26 +28,26 @@ The diagram shows the target deployment. Existing files already define most infr
 
 | Compose/configuration area | Building blocks | Notable mapping |
 |---|---|---|
-| `deploy/docker-compose.yml` | Loki, Prometheus, tracing backend, Collector, Grafana, Fluent Bit, broker, Keycloak | Infrastructure services; observer network; configuration mounts; Loki, Prometheus, Grafana, and Keycloak data volumes are declared. |
-| `deploy/docker-compose.web.yml` | FastAPI API (current definition); Vue frontend (requested) | Current API port mapping is 8080; frontend build/run instructions and published port are not yet defined. |
-| `deploy/configs/otel-collector/` | Collector | OTLP receivers; trace exporter currently names Jaeger; metrics endpoint used by Prometheus. |
-| `deploy/configs/grafana/provisioning/` | Grafana | Prometheus and Loki datasources plus current Jaeger datasource. |
+| `deploy/docker-compose.yml` | Loki, Prometheus, Tempo, Collector, Grafana, Fluent Bit, Kafka, Keycloak | Infrastructure services; observer network; named volumes include Tempo and Kafka state. |
+| `deploy/docker-compose.web.yml` | FastAPI and Vue | Builds from `../backend` and `../frontend`; publishes `127.0.0.1:8080` and `127.0.0.1:8081`; health checks are defined. |
+| `deploy/configs/otel-collector/` | Collector | OTLP receivers; traces export to Tempo; metrics endpoint remains available to Prometheus. |
+| `deploy/configs/grafana/provisioning/` | Grafana | Prometheus, Loki, and Tempo datasources. |
 | `deploy/configs/fluent-bit/` | Fluent Bit | Forward input on 24224 and Loki output to `skb-loki:3100`. |
 
 ## Infrastructure Level 2
 
 ### Web Application Services
 
-Target: define buildable FastAPI and Vue services in `docker-compose.web.yml`, with host access documented for each and browser-reachable API configuration where needed. The repository currently shows no backend or frontend Dockerfile in the root/project listings, so implementation must provide or select valid build instructions. The supported compose invocation must also resolve any referenced infrastructure services.
+The overlay defines buildable FastAPI and Vue services with host access at `127.0.0.1:8080` and `127.0.0.1:8081`. The Vue page is static and does not need an API proxy. Both services join the observer network; neither depends on a service it does not consume.
 
 ### Observability Services
 
-The target trace path is Collector to Tempo to Grafana. Prometheus continues to scrape Collector metrics; Fluent Bit continues to send forwarded logs to Loki. Configuration endpoints, ports, readiness, storage, and network aliases must be consistent across Compose and provisioning files.
+The configured trace path is Collector to Tempo to Grafana. Tempo accepts internal OTLP on 4317/4318, exposes query/readiness on 3200, and stores WAL/blocks in `tempo_data` with 24-hour retention. Prometheus continues to scrape Collector metrics; Fluent Bit continues to send forwarded logs to Loki.
 
 ### Messaging and Identity Services
 
-Kafka replaces RabbitMQ as the broker service; the local Kafka mode, listener/bootstrap address, persistence, and authentication settings are open implementation decisions. Keycloak is currently deployed independently; no application identity integration contract is specified.
+Kafka is configured as a persistent, single-node KRaft broker with `kafka:9092` for Compose clients and loopback `localhost:29092` for host clients. It uses plaintext without authentication and is not a production/shared-network configuration. Keycloak is deployed independently; no application identity integration is configured.
 
 ### Deployment Entry Points
 
-The deployment directory contains helper scripts as well as Compose files. At inspection time, `deploy/2_deploy.sh` refers to `docker-compose.cleanwebapi.yml`, which is not present in the directory listing. The implementation should reconcile the documented/startup entry point with the actual Compose file set rather than imply that the script already launches this target architecture.
+All lifecycle helpers resolve their own directory and use the same two Compose files. `deploy/0_create_env.sh` creates the required Grafana and Keycloak passwords; optional GitHub package credential setup is separate. The scripts and merged Compose model are statically validated, but live service health remains unverified without a running Docker Engine.

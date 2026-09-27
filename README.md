@@ -2,6 +2,7 @@
 A baseline framework which uses fastapi as backend and vue as frontend.
 
 For the complete backend setup and endpoint guide, see [Backend Usage](docs/usage/backend/USAGE.md).
+For the local Docker Compose stack, see the [Infrastructure Usage guide](docs/usage/infra/USAGE.md).
 
 ## Backend
 

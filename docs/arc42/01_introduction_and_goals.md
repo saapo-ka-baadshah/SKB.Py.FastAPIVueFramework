@@ -11,14 +11,14 @@ The approved deployment change set is defined in [deploy requirements](../specs/
 - `DEPLOY-REQ-003`: orchestrate the existing backend and frontend in `deploy/docker-compose.web.yml`.
 - `SYSTEM-REQ-001`: document the complete repository runtime in this system-level arc42 set.
 
-The arc42 chapters describe the baseline evidenced by repository files and the requested target architecture separately. Approval of requirements is not evidence that target configuration has been implemented.
+The deployment configuration now defines Tempo, Kafka, and the two web application containers. The merged Compose model and configuration syntax have been checked, but images and live service health have not been verified because the Docker Engine is unavailable; see [Risks and Technical Debts](11_technical_risks.md).
 
 ## Quality Goals
 
 | Priority | Quality goal | Architectural response |
 |---|---|---|
 | 1 | Reproducible development startup | Compose coordinates the web applications and required infrastructure using documented configuration. |
-| 2 | Observable runtime | OpenTelemetry carries traces and metrics; Fluent Bit carries container logs; Grafana provides a shared query surface. Tempo is the requested trace backend. |
+| 2 | Observable runtime | The Collector is configured to export traces to Tempo and expose metrics for Prometheus; Fluent Bit carries forwarded logs to Loki; Grafana provisions all three data sources. Application instrumentation remains unspecified. |
 | 3 | Clear service boundaries | The Vue browser client, FastAPI API, message broker, identity service, and observability services have explicit network/configuration boundaries. |
 | 4 | Maintainable system documentation | One repository-level arc42 description covers all relevant runtime components and marks unverified target state explicitly. |
 
@@ -28,4 +28,4 @@ The arc42 chapters describe the baseline evidenced by repository files and the r
 |--------------|-----------------|---------------------|
 | Application developer | Repository maintainers | Understand, run, and extend the backend, frontend, and local infrastructure. |
 | Operator / platform developer | Repository maintainers | Configure and inspect local services and their dependencies. |
-| Application user | Not specified | Use the Vue frontend and its backend API. |
+| Application user | Not specified | Use the Vue frontend; the API is separately reachable, while the current frontend does not call it. |

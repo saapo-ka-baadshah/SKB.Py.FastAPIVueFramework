@@ -9,6 +9,8 @@ volumes:
   loki_data:
   grafana_data:
   keycloak_data:
+  tempo_data:
+  kafka_data:
 #################################################
 
 ############################## Logging Extensions
@@ -24,7 +26,7 @@ x-logging-ext: &logging-ext
 # SEQUENCE 1:
 #   1. Loki
 #   2. Prometheus
-#   3. Jaeger
+#   3. Tempo
 #
 # SEQUENCE 2:
 # This sequence is dependent on the healthy status of SEQUENCE 1
@@ -36,7 +38,7 @@ x-logging-ext: &logging-ext
 # Finally, fluent-bit which depends on otel-collector for log sourcing and Loki for log sinking
 #
 # SEQUENCE 3:
-#   1. rabbitmq
+#   1. Kafka
 #   2. keycloak
 #
 # DECENTRALIZED SEQUENCES:
@@ -59,16 +61,16 @@ services:
     networks:
       - observer-net
     restart: unless-stopped
-    healthcheck:
-      test: "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"
-      start_interval: 5s
-      start_period: 30s
+#    healthcheck:
+#      test: "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"
+#      start_interval: 5s
+#      start_period: 30s
 
   prometheus:
     image: docker.io/prom/prometheus:latest
     container_name: skb-prometheus
     hostname: skb-prometheus
-    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    command: ["--config.file=/etc/prometheus/prometheus.yaml"]
     volumes:
       - ./configs/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
       - prometheus_data:/prometheus # Persist Prometheus data
@@ -83,21 +85,53 @@ services:
       retries: 5
       start_period: 30s
 
-  jaeger:
-    container_name: skb-jaeger
-    hostname: skb-jaeger
-    image: docker.io/jaegertracing/jaeger:latest
+  tempo:
+    image: grafana/tempo:2.7.2
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./configs/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
     ports:
-      - "16686:16686"     # Jaeger UI / Query API
-      - "14268:14268"     # Jaeger collector HTTP
-      - "14250:14250"     # Jaeger collector gRPC
+      - "127.0.0.1:3200:3200"
     networks:
       - observer-net
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
     healthcheck:
-      test: "wget --no-verbose --tries=1 --spider http://localhost:16686/ || exit 1"
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3200/ready || exit 1"]
       start_interval: 5s
+      start_period: 30s
+
+  kafka:
+    image: apache/kafka:3.9.1
+    hostname: kafka
+    container_name: skb-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CLUSTER_ID: ${KAFKA_CLUSTER_ID:?Run ./0_create_env.sh to generate it}
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    ports:
+      - "127.0.0.1:29092:29092"
+    networks:
+      - observer-net
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
       start_period: 30s
 
   otel-collector:
@@ -124,10 +158,10 @@ services:
 #      start_period: 30s
     depends_on:
       loki:
-        condition: service_healthy
+        condition: service_started
       prometheus:
         condition: service_healthy
-      jaeger:
+      tempo:
         condition: service_healthy
 
   grafana:
@@ -147,13 +181,11 @@ services:
       prometheus:
         condition: service_healthy
       loki:
-        condition: service_healthy
-      jaeger:
+        condition: service_started
+      tempo:
         condition: service_healthy
       fluent-bit:
         condition: service_started
-      rabbitmq:
-          condition: service_started
     networks:
       - observer-net
     logging: *logging-ext
@@ -175,25 +207,7 @@ services:
     networks:
       - observer-net
 
-  rabbitmq:
-    image: rabbitmq:3-management
-    hostname: skb-rabbitmq
-    container_name: rabbitmq
-    restart: unless-stopped
-    command: >
-        sh -c "rabbitmq-server"
-    depends_on:
-        fluent-bit:
-            condition: service_started
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: ${RABBIT_ADMIN_PASSWORD}
-    logging: *logging-ext
-    networks:
-        - observer-net
+
 
   keycloak:
     image: quay.io/keycloak/keycloak:latest

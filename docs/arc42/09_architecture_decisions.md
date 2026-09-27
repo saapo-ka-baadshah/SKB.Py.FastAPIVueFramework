@@ -1,6 +1,6 @@
 # Architecture Decisions
 
-This section records approved target direction and explicit unresolved choices. It does not state that the target configuration is already deployed.
+This section records the configured local architecture and the remaining verification gap. The merged Compose model and edited YAML files parse, but the Docker Engine was unavailable for image builds or live service checks.
 
 ## Replace Jaeger with Grafana Tempo
 
@@ -8,7 +8,7 @@ This section records approved target direction and explicit unresolved choices. 
 
 **Rationale:** This directly satisfies `DEPLOY-REQ-001` and maintains the existing Collector/Grafana architecture. The Collector exporter and Grafana datasource must change together.
 
-**Status:** Approved direction; implementation pending. Local Tempo storage mode and retention remain implementation details.
+**Status:** Configured: Tempo 2.7.2 uses local WAL/block storage, a 24-hour block retention, OTLP receivers on 4317/4318, and query/readiness on 3200. Collector export and Grafana datasource endpoints agree. Live ingestion/query verification remains pending.
 
 ## Replace RabbitMQ with Kafka
 
@@ -16,7 +16,7 @@ This section records approved target direction and explicit unresolved choices. 
 
 **Rationale:** This directly satisfies `DEPLOY-REQ-002`. The request specifies a product replacement but not broker topology or application message semantics.
 
-**Status:** Approved direction; implementation pending. Distribution, listener configuration, authentication, persistence, and any actual application clients remain unresolved. No producer/consumer workflow is implied.
+**Status:** Configured: Apache Kafka 3.9.1 runs as a single-node KRaft broker with a named data volume, `kafka:9092` internal and loopback `localhost:29092` host listeners, and no TLS or client authentication. This is for trusted local development only. No producer/consumer workflow is implied; broker health remains unverified at runtime.
 
 ## Orchestrate the Web Application in Compose
 
@@ -24,7 +24,7 @@ This section records approved target direction and explicit unresolved choices. 
 
 **Rationale:** One documented Compose workflow should build and start both services, with network connectivity and browser-reachable addresses configured explicitly (`DEPLOY-REQ-003`).
 
-**Status:** Approved direction; implementation pending. Whether this file is standalone or layered with the infrastructure Compose file is unresolved.
+**Status:** Configured: the overlay defines backend and frontend builds, loopback ports 8080 and 8081, and app health checks. The supported invocation combines both Compose files from `deploy/`; the frontend remains static and makes no API call. Container builds and health remain unverified at runtime.
 
 ## Maintain One System-Level arc42 Set
 
@@ -32,4 +32,4 @@ This section records approved target direction and explicit unresolved choices. 
 
 **Rationale:** The repository already contains one chapter set and the canonical `arc42-template-EN.md`; a repository-level view can describe all runtime components and their relationships (`SYSTEM-REQ-001`).
 
-**Status:** Assumption for planning. A request for separate arc42 documents per service would expand the documentation scope and should be confirmed before such documents are created.
+**Status:** Current documentation decision. One repository-level chapter set covers all system blocks; `arc42-template-EN.md` remains unchanged as the canonical reference. This satisfies `SYSTEM-REQ-001` without per-service copies.

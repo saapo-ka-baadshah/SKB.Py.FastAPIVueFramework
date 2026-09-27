@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ########### FORMATTERS
 LINE_SEPARATOR="--------------------------------------------------------------------"
 
 stop(){
-	docker compose \
-		-f docker-compose.yml \
-		-f docker-compose.cleanwebapi.yml \
-		down
+	cd "$SCRIPT_DIR"
+	docker compose -f docker-compose.yml -f docker-compose.web.yml down
 }
 
 ########### MAIN SCRIPT
 
 echo $LINE_SEPARATOR
-echo "Starting Docker Environment"
+echo "Stopping Docker Environment"
 echo $LINE_SEPARATOR
 # Start the dev environment here
 stop
