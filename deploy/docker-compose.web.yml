@@ -7,6 +7,9 @@ services:
         build:
             context: ../backend
             dockerfile: Dockerfile
+        environment:
+            OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://otel-collector:4317
+            OTEL_SERVICE_NAME: SKB.Py.FastAPIVueFramework
         ports:
             -   "127.0.0.1:8080:8080"
         networks:

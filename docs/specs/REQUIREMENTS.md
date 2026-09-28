@@ -6,7 +6,7 @@ This index assigns requirements to the repository's independently scoped units. 
 |---|---|---|
 | Backend | FastAPI application, API versioning, health endpoint, tests, dependencies, and run documentation | [Backend requirements](backend/REQUIREMENTS.md) |
 | Frontend | Vue application and frontend-owned behavior | [Frontend requirements](frontend/REQUIREMENTS.md) |
-| Deploy / infra | Deployment/infrastructure behavior and repository-wide system architecture documentation | [Deploy / infra requirements](deploy/REQUIREMENTS.md): DEPLOY-REQ-001 through DEPLOY-REQ-003; SYSTEM-REQ-001 |
+| Deploy / infra | Deployment/infrastructure behavior, backend log delivery, and repository-wide system architecture documentation | [Deploy / infra requirements](deploy/REQUIREMENTS.md): DEPLOY-REQ-001 through DEPLOY-REQ-004; DEPLOY-NFR-001; SYSTEM-REQ-001 |
 
 ## Source Requests
 
@@ -15,3 +15,5 @@ The backend source request asks for a basic, well-documented FastAPI backend imp
 The frontend source requests ask for a Vue frontend in `frontend/` whose initial page simply presents the application's backend and frontend technology stacks, and developer-facing guidance on correct JSDoc usage for JavaScript and Vue code. The frontend requirements are in [frontend/REQUIREMENTS.md](frontend/REQUIREMENTS.md).
 
 The deployment/system source request asks to replace Jaeger with Grafana Tempo and RabbitMQ with Kafka, orchestrate the existing FastAPI backend and Vue frontend in `deploy/docker-compose.web.yml`, and extend the arc42 documentation to cover the system. Its requirements and acceptance criteria are in [deploy/REQUIREMENTS.md](deploy/REQUIREMENTS.md). The single system-level arc42 interpretation is assumed for planning; separate per-service documentation remains an open clarification, not a blocker.
+
+The logging issue request expects logs to be visible when the backend endpoint is called. The deploy requirements interpret this as backend request records being queryable in Loki, not as Loki container stdout; this interpretation and the proposed local visibility target are open for confirmation in [deploy/REQUIREMENTS.md](deploy/REQUIREMENTS.md).

@@ -2,6 +2,7 @@
 
 Current plans:
 
+- [PLAN-007: Deliver Backend Logs to Loki](PLAN-007-backend-logs-to-loki.md) is the focused implementation and verification follow-up for DEPLOY-REQ-004 and DEPLOY-NFR-001.
 - [PLAN-006: Deployment Modernization](PLAN-006-deployment-modernization.md) is the deployment and infrastructure implementation plan.
 - [PLAN-004: Vue Frontend](PLAN-004-vue-frontend.md) is the frontend implementation plan.
 - [PLAN-005: Frontend JSDoc Guidance](PLAN-005-frontend-jsdoc-guidance.md) covers the frontend documentation update for FRONTEND-REQ-003.
